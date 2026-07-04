@@ -77,14 +77,19 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
-    // 视觉模型fallback链：优先用最新Qwen3-VL，依次降级
-    // 需要在SiliconFlow控制台开通对应的模型才能使用
+    // 视觉模型fallback链：按SiliconFlow实际可用性排序
+    // 403=需开通, 400=不存在(已移除), 只有确认可用的排在前面
     const vlModels = [
       process.env.SILICONFLOW_VL_MODEL,
-      'Qwen/Qwen3-VL-235B-A22B-Instruct',  // 最新Qwen3视觉旗舰（推荐）
+      // === 确认可用（已有视觉输入能力的通用模型）===
+      'Qwen/Qwen3.6-35B-A3B',               // 文本模型但支持视觉输入，当前账号已在使用
+      'Qwen/Qwen3.6-27B',                   // 同上，支持视觉理解
+      'Qwen/Qwen3-VL-8B-Instruct',           // Qwen3-VL系列，实际可用
+      'Qwen/Qwen3-VL-32B-Instruct',          // Qwen3-VL系列，热门模型
+      'Qwen/Qwen3-VL-235B-A22B-Instruct',    // 403需开通，开通后效果最好
+      // === 需要开通（403 Model disabled）===
       'Qwen/Qwen2.5-VL-72B-Instruct',
       'Qwen/Qwen2.5-VL-32B-Instruct',
-      'Qwen/Qwen2.5-VL-7B-Instruct',
       'Qwen/Qwen2-VL-72B-Instruct',
       'deepseek-ai/Janus-Pro-7B',
       'deepseek-ai/DeepSeek-VL2',
