@@ -19,15 +19,23 @@ export async function GET() {
     console.error('获取模型列表失败', e);
   }
 
-  // 过滤出可能是视觉/VL的模型
+  // 所有模型里挨个测试（过滤掉明显非视觉的，剩下的全部试）
+  const skipKeywords = ['embed', 'tts', 'asr', 'reranker', 'tts', 'whisper', 'speech',
+    'inpaint', 'flux', 'sd-', 'stable-diffusion', 'image-gen', 'cogview', 'seedance',
+    'music', 'code-', 'math-', 'large-language', 'pro/' ];
+  const forceTry = ['Qwen/Qwen2.5-VL', 'Qwen/Qwen2-VL', 'deepseek-ai/Janus', 'deepseek-ai/DeepSeek-VL', 'InternVL', 'glm-4v', 'Gemma'];
   const vlCandidates = allModels.filter(id => {
     const l = id.toLowerCase();
-    return (l.includes('vl') || l.includes('vision') || l.includes('janus') ||
-            l.includes('internvl') || l.includes('glm-4v') || l.includes('pixtral') ||
-            l.includes('llava') || l.includes('llama-3.2-vision') || l.includes('qwen2.5-vl') ||
-            l.includes('qwen2-vl') || l.includes('minicpm') || l.includes('gemma-3') ||
-            l.includes('phi-3') || l.includes('deepseek-vl') || l.includes('ocr'))
-      && !l.includes('nv-embed') && !l.includes('tts') && !l.includes('asr');
+    // 强制测试的
+    if (forceTry.some(k => id.includes(k))) return true;
+    // 明显是非视觉的跳过
+    if (skipKeywords.some(k => l.includes(k))) return false;
+    // 包含视觉关键词的试
+    if (l.includes('vl') || l.includes('vision') || l.includes('janus') ||
+        l.includes('internvl') || l.includes('glm-4v') || l.includes('pixtral') ||
+        l.includes('llava') || l.includes('llama-3.2-vision') || l.includes('minicpm') ||
+        l.includes('gemma-3') || l.includes('phi-3') || l.includes('ocr')) return true;
+    return false;
   });
 
   // 加上一些兜底常用的
