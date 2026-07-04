@@ -2,19 +2,43 @@ import { NextResponse } from 'next/server';
 
 // 测试哪个视觉模型可用
 const TEST_MODELS = [
+  // Qwen VL系列各种可能的命名
   'Qwen/Qwen2.5-VL-72B-Instruct',
+  'Qwen/Qwen2.5-VL-32B-Instruct',
+  'Qwen/Qwen2.5-VL-7B-Instruct',
   'Qwen/Qwen2-VL-72B-Instruct',
   'Qwen/Qwen2-VL-7B-Instruct',
-  'Qwen/Qwen2.5-VL-7B-Instruct',
+  'Qwen/QVQ-72B-Preview',
+  // DeepSeek
   'deepseek-ai/Janus-Pro-7B',
+  'deepseek-ai/DeepSeek-VL2',
+  // InternVL
   'OpenGVLab/InternVL3-8B-Instruct',
   'OpenGVLab/InternVL2_5-8B-MPO',
-  'Pro/Qwen/Qwen2.5-VL-7B-Instruct',
-  'Pro/Qwen/Qwen2.5-VL-72B-Instruct',
-  'telechat/TeleChat2-VL-12B',
+  'OpenGVLab/InternVL3-78B-Instruct',
+  'OpenGVLab/InternVL3-38B-Instruct',
+  'OpenGVLab/InternVL3-2B-Instruct',
+  'OpenGVLab/InternVL3-1B-Instruct',
+  'OpenGVLab/InternVL2-8B',
+  'OpenGVLab/Mini-InternVL-Chat-4B-V1-5',
+  // GLM
   'THUDM/glm-4v-9b',
+  'THUDM/GLM-4.1V-9B-Thinking',
+  // Llama
   'meta-llama/Llama-3.2-11B-Vision-Instruct',
+  'meta-llama/Llama-3.2-90B-Vision-Instruct',
+  // 其他
   'mistralai/Pixtral-Large-Instruct-2411',
+  'google/gemma-3-27b-it',
+  'microsoft/Phi-3.5-vision-instruct',
+  'StepFun/step1o-vision',
+  'nvidia/Minitron-VLM',
+  'Qwen/CodeQwen1.5-7B-Chat',
+  // 免费专区
+  'Qwen/Qwen2.5-VL-3B-Instruct',
+  'Qwen/Qwen2.5-VL-7B-Instruct',
+  'deepseek-ai/deepseek-vl2-small',
+  'deepseek-ai/deepseek-vl2-tiny',
 ];
 
 // 1x1透明PNG
