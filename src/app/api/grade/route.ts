@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/../auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 // SiliconFlow API兼容OpenAI格式
 const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
@@ -69,7 +70,7 @@ ${question.content}${optionsText}
 export async function POST(req: Request) {
   try {
     // 验证用户登录
-    const session = await auth();
+    const session = await getServerSession(authOptions);
     if (!session || session.user.role !== 'teacher') {
       return NextResponse.json({ error: '未授权' }, { status: 401 });
     }

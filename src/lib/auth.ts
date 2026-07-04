@@ -1,5 +1,5 @@
-import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
+import type { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
 import type { UserRole } from "@/types";
 
 // 预设演示账号
@@ -22,55 +22,54 @@ const DEMO_USERS = [
   },
 ];
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
-    Credentials({
+    CredentialsProvider({
+      name: "Credentials",
       credentials: {
         username: { label: "用户名", type: "text" },
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
-        try {
-          if (!credentials?.username || !credentials?.password) {
-            return null;
-          }
-
-          const username = String(credentials.username).trim();
-          const password = String(credentials.password).trim();
-
-          const user = DEMO_USERS.find(
-            (u) => u.username === username && u.password === password
-          );
-
-          if (user) {
-            return {
-              id: user.id,
-              name: user.name,
-              email: `${user.username}@local`,
-              role: user.role,
-              avatar: user.avatar,
-            };
-          }
-
-          return null;
-        } catch (error) {
-          console.error("Auth error:", error);
+        if (!credentials?.username || !credentials?.password) {
           return null;
         }
+
+        const username = String(credentials.username).trim();
+        const password = String(credentials.password).trim();
+
+        const user = DEMO_USERS.find(
+          (u) => u.username === username && u.password === password
+        );
+
+        if (user) {
+          return {
+            id: user.id,
+            name: user.name,
+            email: `${user.username}@local`,
+            role: user.role,
+            avatar: user.avatar,
+          } as any;
+        }
+
+        return null;
       },
     }),
   ],
   pages: {
     signIn: "/login",
   },
-  session: { strategy: "jwt" },
-  secret: process.env.AUTH_SECRET || "dev-secret-key-for-demo-only-please-change-in-production",
+  session: {
+    strategy: "jwt",
+    maxAge: 7 * 24 * 60 * 60,
+  },
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-secret-key",
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role;
-        token.id = user.id;
-        token.avatar = user.avatar;
+        token.role = (user as any).role;
+        token.id = (user as any).id;
+        token.avatar = (user as any).avatar;
       }
       return token;
     },
@@ -82,8 +81,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith(baseUrl)) return url;
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      return baseUrl;
+    },
   },
-});
+};
 
 // 扩展类型
 declare module "next-auth" {

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn, useSession } from 'next-auth/react';
 import { BookOpen, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/';
@@ -54,7 +54,6 @@ export default function LoginPage() {
       if (result?.error) {
         setError('用户名或密码错误，请重试');
       } else {
-        // 登录成功，根据角色跳转
         router.push(result?.url || (username === 'teacher' ? '/teacher' : '/parent'));
         router.refresh();
       }
@@ -156,6 +155,7 @@ export default function LoginPage() {
               <p className="text-sm text-center text-muted-foreground mb-3">演示账号</p>
               <div className="grid grid-cols-2 gap-3">
                 <button
+                  type="button"
                   onClick={() => { setUsername('teacher'); setPassword('123456'); }}
                   className="p-3 rounded-xl border border-primary-100 bg-primary-50 text-primary-700 text-sm hover:bg-primary-100 transition-colors"
                 >
@@ -163,6 +163,7 @@ export default function LoginPage() {
                   <span className="text-xs text-primary-500">teacher / 123456</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => { setUsername('parent'); setPassword('123456'); }}
                   className="p-3 rounded-xl border border-accent-100 bg-accent-50 text-accent-700 text-sm hover:bg-accent-100 transition-colors"
                 >
@@ -179,5 +180,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-hero flex items-center justify-center">
+        <Loader2 className="animate-spin text-primary-600" size={32} />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
