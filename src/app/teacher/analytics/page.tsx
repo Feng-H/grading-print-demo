@@ -1,12 +1,42 @@
 'use client';
 
-import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LineChart, Line, Legend } from 'recharts';
-import { TrendingUp, Users, Target, Lightbulb, AlertTriangle, ArrowRight, ChevronDown, XCircle, BarChart } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { TrendingUp, Users, Target, Lightbulb, AlertTriangle, ArrowRight, ChevronDown, XCircle, BarChart, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { sampleClassAnalytics, students, studentRadarData, studentTrendData } from '@/lib/mock-data';
+import { sampleClassAnalytics, students as mockStudents } from '@/lib/mock-data';
 
 export default function AnalyticsPage() {
   const colors = ['#10b981', '#34d399', '#6ee7b7', '#fbbf24', '#f87171'];
+  const [analytics, setAnalytics] = useState(sampleClassAnalytics);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cls = await fetch('/api/classes').then(r => r.json());
+        if (cls.classes?.[0]) {
+          const cid = cls.classes[0].id;
+          const a = await fetch(`/api/analytics/class/${cid}`).then(r => r.json());
+          if (a && !a.error && a.knowledgePointMastery?.length > 0) {
+            setAnalytics({
+              homeworkId: '', homeworkTitle: '近期作业',
+              classId: cid, className: a.className,
+              averageScore: a.averageScore, maxScore: a.maxScore, minScore: a.minScore,
+              submissionRate: 100,
+              scoreDistribution: a.scoreDistribution,
+              knowledgePointMastery: a.knowledgePointMastery,
+              commonMistakes: (a.commonMistakes || []).map((m: any) => ({
+                questionId: m.questionId, questionContent: m.questionContent,
+                wrongCount: m.wrongCount, errorAnalysis: `错误率${m.errorRate}%，需要重点讲解`
+              })),
+              teachingSuggestions: a.teachingSuggestions,
+            });
+          }
+        }
+      } catch {} finally { setLoading(false); }
+    })();
+  }, []);
 
   const getBarColor = (rate: number) => {
     if (rate >= 80) return '#10b981';
@@ -14,13 +44,17 @@ export default function AnalyticsPage() {
     return '#ef4444';
   };
 
+  if (loading) {
+    return <div className="py-20 text-center"><Loader2 className="mx-auto animate-spin text-primary-600 mb-3" /><p className="text-muted-foreground">加载中...</p></div>;
+  }
+
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       {/* 头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">学情分析</h1>
-          <p className="text-muted-foreground mt-1">{sampleClassAnalytics.homeworkTitle} · {sampleClassAnalytics.className}</p>
+          <p className="text-muted-foreground mt-1">{analytics.homeworkTitle} · {analytics.className}</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-border">
           <span>最近测试</span>
@@ -37,8 +71,8 @@ export default function AnalyticsPage() {
             </div>
             <span className="text-sm text-muted-foreground">平均分</span>
           </div>
-          <p className="text-3xl font-bold text-primary-700">{sampleClassAnalytics.averageScore}</p>
-          <p className="text-xs text-muted-foreground mt-1">最高分 {sampleClassAnalytics.maxScore} · 最低分 {sampleClassAnalytics.minScore}</p>
+          <p className="text-3xl font-bold text-primary-700">{analytics.averageScore}</p>
+          <p className="text-xs text-muted-foreground mt-1">最高分 {analytics.maxScore} · 最低分 {analytics.minScore}</p>
         </div>
         <div className="bg-white rounded-2xl border border-border p-5">
           <div className="flex items-center gap-3 mb-2">
@@ -47,8 +81,8 @@ export default function AnalyticsPage() {
             </div>
             <span className="text-sm text-muted-foreground">提交率</span>
           </div>
-          <p className="text-3xl font-bold text-blue-700">{sampleClassAnalytics.submissionRate}<span className="text-lg">%</span></p>
-          <p className="text-xs text-muted-foreground mt-1">42人提交 · 3人未交</p>
+          <p className="text-3xl font-bold text-blue-700">{analytics.submissionRate}<span className="text-lg">%</span></p>
+          <p className="text-xs text-muted-foreground mt-1">已提交的作业均已批改</p>
         </div>
         <div className="bg-white rounded-2xl border border-border p-5">
           <div className="flex items-center gap-3 mb-2">
@@ -92,7 +126,7 @@ export default function AnalyticsPage() {
                   cursor={{ fill: '#f8fafc' }}
                 />
                 <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {sampleClassAnalytics.scoreDistribution.map((entry, index) => (
+                  {analytics.scoreDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
                   ))}
                 </Bar>
@@ -110,7 +144,7 @@ export default function AnalyticsPage() {
             知识点掌握情况
           </h2>
           <div className="space-y-4">
-            {[...sampleClassAnalytics.knowledgePointMastery].sort((a, b) => a.correctRate - b.correctRate).map(kp => (
+            {[...analytics.knowledgePointMastery].sort((a, b) => a.correctRate - b.correctRate).map(kp => (
               <div key={kp.id}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm font-medium">{kp.name}</span>
@@ -140,8 +174,8 @@ export default function AnalyticsPage() {
             典型错误分析
           </h2>
           <div className="space-y-4">
-            {sampleClassAnalytics.commonMistakes.map((mistake, i) => (
-              <div key={mistake.questionId} className="p-4 rounded-xl border border-border bg-amber-50/50">
+            {analytics.commonMistakes.map((mistake, i) => (
+              <div key={mistake.questionId + i} className="p-4 rounded-xl border border-border bg-amber-50/50">
                 <div className="flex items-start gap-3">
                   <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0 font-bold text-sm">
                     {i + 1}
@@ -150,7 +184,7 @@ export default function AnalyticsPage() {
                     <p className="font-medium text-sm mb-2">{mistake.questionContent}</p>
                     <div className="flex items-center gap-2 text-xs text-red-600 mb-2">
                       <XCircle size={14} />
-                      {mistake.wrongCount}人出错（{Math.round(mistake.wrongCount / 42 * 100)}%）
+                      {mistake.wrongCount}人出错
                     </div>
                     <p className="text-sm text-muted-foreground">{mistake.errorAnalysis}</p>
                   </div>
@@ -167,7 +201,7 @@ export default function AnalyticsPage() {
             AI教学建议
           </h2>
           <div className="space-y-4">
-            {sampleClassAnalytics.teachingSuggestions.map((suggestion, i) => (
+            {analytics.teachingSuggestions.map((suggestion, i) => (
               <div key={i} className="flex gap-3">
                 <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 text-sm font-bold">
                   {i + 1}
@@ -194,7 +228,7 @@ export default function AnalyticsPage() {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {students.map((student, i) => {
+              {mockStudents.map((student, i) => {
                 const scores = [85, 78, 92, 61, 88];
                 const score = scores[i] || 75;
                 const weakPoints = [

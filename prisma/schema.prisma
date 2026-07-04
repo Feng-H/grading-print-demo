@@ -14,7 +14,7 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   username      String    @unique
-  passwordHash  String
+  passwordHash  String?   // 演示阶段可空，内存密码比对
   name          String
   role          String    // "teacher" | "parent"
   avatar        String    @default("👤")
@@ -63,15 +63,17 @@ model Student {
 
 // 作业/试卷
 model Homework {
-  id            String    @id @default(cuid())
-  title         String
-  description   String
-  subject       String
-  totalScore    Int       @default(100)
-  status        String    @default("pending") // pending|grading|graded|published
-  deadline      DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  title           String
+  description     String    @default("")
+  subject         String    @default("数学")
+  totalScore      Int       @default(100)
+  status          String    @default("pending") // pending|grading|graded|published
+  deadline        DateTime?
+  sourceImageUrls String[]  @default([]) // 原始上传图片（原型阶段存dataURL）
+  isDemo          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   classId       String
   class         Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -118,11 +120,12 @@ model StudentAnswer {
 
 // 学生提交
 model Submission {
-  id            String   @id @default(cuid())
-  submitTime    DateTime @default(now())
-  totalScore    Int?
-  aiComment     String?
-  status        String   @default("submitted") // submitted|grading|graded
+  id              String   @id @default(cuid())
+  submitTime      DateTime @default(now())
+  totalScore      Int?
+  aiComment       String?
+  status          String   @default("submitted") // submitted|grading|graded
+  ocrConfidence   Float?   // OCR识别平均置信度
 
   homeworkId    String
   homework      Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
