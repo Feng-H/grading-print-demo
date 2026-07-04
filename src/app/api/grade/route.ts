@@ -147,7 +147,7 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
-    const model = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2.5-72B-Instruct';
+    const model = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen3.6-35B-A3B';
 
     const body = await req.json();
     const { questions, answers, persist, paperInfo } = body as {

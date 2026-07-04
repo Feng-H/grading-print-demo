@@ -77,17 +77,15 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
-    // 视觉模型fallback链：按测试结果，把"Model disabled"的几个可用模型都列上
-    // 用户在SiliconFlow开通哪个，哪个就能用
+    // 视觉模型fallback链：优先用最新Qwen3-VL，依次降级
+    // 需要在SiliconFlow控制台开通对应的模型才能使用
     const vlModels = [
       process.env.SILICONFLOW_VL_MODEL,
-      // Qwen2.5-VL系列（推荐优先开通7B免费版）
-      'Qwen/Qwen2.5-VL-7B-Instruct',
-      'Qwen/Qwen2.5-VL-32B-Instruct',
+      'Qwen/Qwen3-VL-235B-A22B-Instruct',  // 最新Qwen3视觉旗舰（推荐）
       'Qwen/Qwen2.5-VL-72B-Instruct',
+      'Qwen/Qwen2.5-VL-32B-Instruct',
+      'Qwen/Qwen2.5-VL-7B-Instruct',
       'Qwen/Qwen2-VL-72B-Instruct',
-      'Qwen/Qwen2-VL-7B-Instruct',
-      // 其他
       'deepseek-ai/Janus-Pro-7B',
       'deepseek-ai/DeepSeek-VL2',
       'THUDM/GLM-4.1V-9B-Thinking',
