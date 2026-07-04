@@ -8,7 +8,7 @@ import {
   AlertCircle, Edit3, Wand2, Award, ArrowLeft, User,
 } from 'lucide-react';
 import { pdfToDataUrls, fileToDataUrl } from './pdf-client';
-import { compressImage, dataUrlSizeKB } from './image-utils';
+import { compressImage, dataUrlSizeKB, rotateCanvas90 } from './image-utils';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type QType = 'choice' | 'judge' | 'fill' | 'math' | 'short_answer' | 'essay';
@@ -101,17 +101,21 @@ export default function AssignHomework() {
           })),
         ]);
       } else if (file.type.startsWith('image/')) {
-        // 自动压缩大图
-        const rawUrl = await fileToDataUrl(file);
-        const rawSize = dataUrlSizeKB(rawUrl);
-        let url = rawUrl;
-        if (rawSize > 800) {
-          // 超过800KB先压缩
-          url = await compressImage(file, rawSize > 2000 ? 1280 : 1600, rawSize > 3000 ? 0.7 : 0.8);
-          console.log(`图片压缩: ${rawSize}KB → ${dataUrlSizeKB(url)}KB`);
+        // EXIF自动旋转+压缩
+        const { dataUrl: url, rotated } = await compressImage(file, 1600, 0.8);
+        const sizeKB = dataUrlSizeKB(url);
+        // 如果压缩后还大，再压一次
+        let finalUrl = url;
+        if (sizeKB > 1500) {
+          // 把dataURL转回Blob再压
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          const r2 = await compressImage(blob, 1280, 0.7);
+          finalUrl = r2.dataUrl;
         }
+        console.log(`图片处理完成: ${dataUrlSizeKB(finalUrl)}KB, EXIF自动旋转:${rotated}`);
         setFileItems(prev => [...prev, {
-          id: `${file.name}-${Date.now()}`, name: file.name, url, kind: 'image' as const,
+          id: `${file.name}-${Date.now()}`, name: file.name + (rotated ? ' (已自动旋转)' : ''), url: finalUrl, kind: 'image' as const,
         }]);
       } else {
         setErrorMsg('不支持的文件类型，请上传JPG/PNG图片或PDF');
@@ -129,6 +133,25 @@ export default function AssignHomework() {
 
   const removeFile = (id: string) => {
     setFileItems(prev => prev.filter(f => f.id !== id));
+  };
+
+  // 手动旋转图片90度
+  const rotateFile = async (id: string) => {
+    const item = fileItems.find(f => f.id === id);
+    if (!item) return;
+    // dataURL -> Image -> Canvas -> rotate
+    const img = new Image();
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error('img load error'));
+      img.src = item.url;
+    });
+    const src = document.createElement('canvas');
+    src.width = img.naturalWidth;
+    src.height = img.naturalHeight;
+    src.getContext('2d')!.drawImage(img, 0, 0);
+    const newUrl = rotateCanvas90(src, true);
+    setFileItems(prev => prev.map(f => f.id === id ? { ...f, url: newUrl } : f));
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -515,15 +538,22 @@ export default function AssignHomework() {
                 <div className="mt-5">
                   <div className="text-sm text-muted-foreground mb-3">
                     已添加 {fileItems.length} 个文件/页面
+                    <span className="ml-2 text-xs text-primary-600">💡 图片如果方向不对，把鼠标移到图片上点↻按钮旋转</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {fileItems.map(f => (
                       <div key={f.id} className="relative group rounded-xl overflow-hidden border border-border bg-muted">
-                        <img src={f.url} alt={f.name} className="w-full h-32 object-cover" />
-                        <button onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                          className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <X size={14} />
-                        </button>
+                        <img src={f.url} alt={f.name} className="w-full h-32 object-contain bg-white" />
+                        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={(e) => { e.stopPropagation(); rotateFile(f.id); }}
+                            className="w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-primary-600" title="旋转90度">
+                            ↻
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                            className="w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-red-600" title="删除">
+                            <X size={14} />
+                          </button>
+                        </div>
                         <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate">{f.name}</div>
                       </div>
                     ))}
