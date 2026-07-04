@@ -64,7 +64,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login",
   },
   session: { strategy: "jwt" },
-  secret: process.env.AUTH_SECRET || "dev-secret-key-for-demo-only",
+  secret: process.env.AUTH_SECRET || "dev-secret-key-for-demo-only-please-change-in-production",
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -76,9 +76,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as UserRole;
-        session.user.avatar = token.avatar as string;
+        (session.user as any).id = token.id;
+        (session.user as any).role = token.role;
+        (session.user as any).avatar = token.avatar;
       }
       return session;
     },
