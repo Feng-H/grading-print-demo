@@ -77,13 +77,21 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
-    // 视觉模型fallback链：用户配置 → 常用模型依次尝试
+    // 视觉模型fallback链：按测试结果，把"Model disabled"的几个可用模型都列上
+    // 用户在SiliconFlow开通哪个，哪个就能用
     const vlModels = [
       process.env.SILICONFLOW_VL_MODEL,
+      // Qwen2.5-VL系列（推荐优先开通7B免费版）
+      'Qwen/Qwen2.5-VL-7B-Instruct',
+      'Qwen/Qwen2.5-VL-32B-Instruct',
       'Qwen/Qwen2.5-VL-72B-Instruct',
       'Qwen/Qwen2-VL-72B-Instruct',
-      'OpenGVLab/InternVL3-8B-Instruct',
+      'Qwen/Qwen2-VL-7B-Instruct',
+      // 其他
       'deepseek-ai/Janus-Pro-7B',
+      'deepseek-ai/DeepSeek-VL2',
+      'THUDM/GLM-4.1V-9B-Thinking',
+      'Qwen/QVQ-72B-Preview',
     ].filter(Boolean) as string[];
 
     if (!apiKey) {
@@ -222,12 +230,13 @@ export async function POST(req: Request) {
     }
 
     if (allQuestions.length === 0) {
+      // 检查是不是所有模型都返回403（未开通）
+      const allDisabled = warnings.some(w => w.includes('所有视觉模型都调用失败')) || (apiDebug && String(apiDebug.body || '').includes('Model disabled'));
+      const errMsg = allDisabled
+        ? '视觉模型尚未开通。请登录SiliconFlow控制台 (https://cloud.siliconflow.cn/models) 搜索 Qwen2.5-VL 并点击"开通"（免费），开通后即可使用试卷识别功能。'
+        : '未能识别到题目。可能原因：1）照片不够清晰 2）试卷内容不完整 3）图片方向不对（请点缩略图↻按钮旋转）。请重试。';
       return NextResponse.json(
-        {
-          error: '未能识别到题目。可能原因：1）照片不够清晰 2）试卷内容不完整 3）视觉模型配置问题。请尝试拍更清晰的照片重试。',
-          warnings,
-          debug: apiDebug,
-        },
+        { error: errMsg, warnings, debug: apiDebug },
         { status: 422 }
       );
     }
