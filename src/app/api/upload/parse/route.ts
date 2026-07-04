@@ -77,7 +77,14 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SILICONFLOW_API_KEY;
-    const vlModel = process.env.SILICONFLOW_VL_MODEL || 'Qwen/Qwen2.5-VL-72B-Instruct';
+    // 视觉模型fallback链：用户配置 → 常用模型依次尝试
+    const vlModels = [
+      process.env.SILICONFLOW_VL_MODEL,
+      'Qwen/Qwen2.5-VL-72B-Instruct',
+      'Qwen/Qwen2-VL-72B-Instruct',
+      'OpenGVLab/InternVL3-8B-Instruct',
+      'deepseek-ai/Janus-Pro-7B',
+    ].filter(Boolean) as string[];
 
     if (!apiKey) {
       return NextResponse.json({ error: '未配置SILICONFLOW_API_KEY' }, { status: 500 });
@@ -119,19 +126,9 @@ export async function POST(req: Request) {
     let confidenceSum = 0;
     let confidenceCount = 0;
 
-    for (let pageIdx = 0; pageIdx < images.length; pageIdx++) {
-      const img = images[pageIdx];
-      console.log(`[OCR] 第${pageIdx+1}/${images.length}页, 大小:${(img.length/1024).toFixed(0)}KB, 模型:${vlModel}`);
-
-      const userText = pageIdx === 0
-        ? `${SYSTEM_PROMPT}\n\n这是第1页（首页），请务必识别试卷标题、科目、年级、学生姓名、班级，以及本页所有题目。`
-        : `这是试卷的第${pageIdx+1}页（共${images.length}页）。请识别本页所有题目，续接之前的题号。只需返回questions数组内容（但仍然输出完整JSON对象，title/subject等字段可以留空字符串）。`;
-
-      let parsed: any = null;
-      let lastErr: any = null;
-
-      // 尝试两次
-      for (let attempt = 0; attempt < 2; attempt++) {
+    // 定义每页调用VL的函数 - 遍历模型fallback
+    async function callVisionModel(imageUrl: string, textPrompt: string): Promise<{ parsed: any; modelUsed: string; error?: string }> {
+      for (const modelId of vlModels) {
         try {
           const resp = await fetch(SILICONFLOW_API_URL, {
             method: 'POST',
@@ -140,48 +137,52 @@ export async function POST(req: Request) {
               'Authorization': `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: vlModel,
+              model: modelId,
               messages: [{
                 role: 'user',
                 content: [
-                  { type: 'text', text: userText },
-                  { type: 'image_url', image_url: { url: img, detail: 'high' } },
+                  { type: 'text', text: textPrompt },
+                  { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } },
                 ],
               }],
               temperature: 0.1,
               max_tokens: 4096,
             }),
           });
-
           const respText = await resp.text();
           if (!resp.ok) {
-            console.error(`[OCR] API错误 ${resp.status}:`, respText.slice(0, 300));
-            lastErr = `API返回${resp.status}`;
-            // 如果是模型不支持等错误，记录
-            if (resp.status === 400 || resp.status === 404) {
-              apiDebug = { status: resp.status, body: respText.slice(0, 500) };
-            }
-            continue;
+            console.warn(`[OCR] 模型 ${modelId} 返回 ${resp.status}: ${respText.slice(0, 200)}`);
+            apiDebug = { model: modelId, status: resp.status, body: respText.slice(0, 300) };
+            continue; // 尝试下一个模型
           }
-
           let data;
-          try { data = JSON.parse(respText); } catch { lastErr = '响应JSON解析失败'; continue; }
-
+          try { data = JSON.parse(respText); } catch { continue; }
           const content: string = data.choices?.[0]?.message?.content || '';
-          console.log(`[OCR] 第${pageIdx+1}页返回长度:${content.length}`);
-          parsed = extractJson(content);
-          if (parsed) break;
-          lastErr = '内容JSON解析失败，原始返回:' + content.slice(0, 200);
+          const parsed = extractJson(content);
+          if (parsed) {
+            console.log(`[OCR] 模型 ${modelId} 调用成功，返回${content.length}字符`);
+            return { parsed, modelUsed: modelId };
+          }
         } catch (err: any) {
-          lastErr = err.message;
-          console.error(`[OCR] 第${pageIdx+1}页异常:`, err);
+          console.warn(`[OCR] 模型 ${modelId} 异常:`, err.message);
         }
-        // 第二次重试稍等
-        await new Promise(r => setTimeout(r, 1000));
       }
+      return { parsed: null, modelUsed: '', error: '所有视觉模型都调用失败' };
+    }
+
+    for (let pageIdx = 0; pageIdx < images.length; pageIdx++) {
+      const img = images[pageIdx];
+      console.log(`[OCR] 第${pageIdx+1}/${images.length}页, 大小:${(img.length/1024).toFixed(0)}KB`);
+
+      const userText = pageIdx === 0
+        ? `${SYSTEM_PROMPT}\n\n这是第1页（首页），请务必识别试卷标题、科目、年级、学生姓名、班级，以及本页所有题目。`
+        : `这是试卷的第${pageIdx+1}页（共${images.length}页）。请识别本页所有题目，续接之前的题号。只需返回questions数组内容（但仍然输出完整JSON对象，title/subject等字段可以留空字符串）。`;
+
+      // 调用 - 自动fallback模型
+      const { parsed, error } = await callVisionModel(img, userText);
 
       if (!parsed) {
-        warnings.push(`第${pageIdx+1}页识别失败${lastErr ? '：' + lastErr : ''}`);
+        warnings.push(`第${pageIdx+1}页识别失败：${error || '未知错误'}`);
         continue;
       }
 
