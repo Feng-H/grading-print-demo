@@ -27,6 +27,8 @@ interface RecognizedQuestion {
   confidence: number;
 }
 interface PaperInfo {
+  title: string;
+  subject: string;
   studentName: string;
   className: string;
   studentNo: string | null;
@@ -128,12 +130,9 @@ export default function AssignHomework() {
       setErrorMsg('请先上传作业照片或PDF');
       return;
     }
-    if (!title.trim()) {
-      setErrorMsg('请填写作业名称');
-      return;
-    }
     setErrorMsg('');
     setParsing(true);
+    setStep(2);
     setParseProgress({ done: 0, total: fileItems.length });
     setParseWarnings([]);
 
@@ -166,25 +165,48 @@ export default function AssignHomework() {
         confidence: q.confidence || 0.5,
       }));
 
-      const klass = classList.find(c => c.id === selectedClass);
+      // AI识别的title/subject/className回填到表单
+      const recognizedTitle = p.title || '作业';
+      const recognizedSubject = p.subject || '数学';
+      setTitle(recognizedTitle);
+      setSubject(recognizedSubject);
+
+      // 尝试匹配班级
+      let matchedClassId = selectedClass;
+      if (p.className) {
+        const cls = classList.find(c => c.name === p.className.trim());
+        if (cls) matchedClassId = cls.id;
+      }
+      setSelectedClass(matchedClassId);
+      // 等学生列表加载后再尝试匹配学生
+      setTimeout(async () => {
+        try {
+          const stu = await fetch(`/api/students?classId=${matchedClassId}`).then(r => r.json());
+          if (stu.students) {
+            setStudents(stu.students);
+            if (p.studentName) {
+              const matched = stu.students.find((s: StudentItem) => s.name === p.studentName.trim());
+              if (matched) setSelectedStudentId(matched.id);
+            }
+          }
+        } catch {}
+      }, 100);
+
       setPaper({
+        title: recognizedTitle,
+        subject: recognizedSubject,
         studentName: p.studentName || '',
-        className: p.className || klass?.name || '',
+        className: p.className || '',
         studentNo: p.studentNo,
         questions,
         avgConfidence: p.avgConfidence,
       });
       setParseWarnings(data.warnings || []);
 
-      // 尝试匹配学生
-      if (p.studentName) {
-        const matched = students.find(s => s.name === p.studentName.trim());
-        if (matched) setSelectedStudentId(matched.id);
-      }
-
       setStep(3);
     } catch (e: any) {
       setErrorMsg(e.message || '识别失败，请重试');
+      setStep(1);
     } finally {
       setParsing(false);
     }
@@ -449,50 +471,15 @@ export default function AssignHomework() {
         {step === 1 && (
           <div className="space-y-5 animate-fade-in">
             <div className="bg-white rounded-2xl border border-border p-6">
-              <h2 className="text-lg font-bold mb-5 flex items-center gap-2">
-                <FileText size={20} className="text-primary-600" />
-                作业信息
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">作业名称</label>
-                  <input
-                    type="text" value={title} onChange={e => setTitle(e.target.value)}
-                    placeholder="例如：第三单元测试卷、7月3日数学作业"
-                    className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none"
-                  />
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-lg shadow-primary-500/20">
+                  <Upload size={24} className="text-white" />
                 </div>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">科目</label>
-                    <select value={subject} onChange={e => setSubject(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none bg-white">
-                      <option>数学</option><option>语文</option><option>英语</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">班级</label>
-                    <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none bg-white">
-                      {classList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      {classList.length === 0 && <option value="">加载中...</option>}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2 flex items-center gap-1">
-                      <Calendar size={16} />截止日期</label>
-                    <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none" />
-                  </div>
+                <div>
+                  <h2 className="text-xl font-bold">上传学生试卷</h2>
+                  <p className="text-sm text-muted-foreground">AI将自动识别作业名称、科目、班级、学生姓名和所有题目答案</p>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-border p-6">
-              <h2 className="text-lg font-bold mb-5 flex items-center gap-2">
-                <Upload size={20} className="text-primary-600" />
-                上传学生试卷
-              </h2>
               <div
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -581,6 +568,48 @@ export default function AssignHomework() {
         {/* Step 3: 确认识别结果 */}
         {step === 3 && paper && (
           <div className="space-y-5 animate-fade-in">
+            {/* 作业信息（AI识别，可修改） */}
+            <div className="bg-white rounded-2xl border border-border p-6">
+              <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <FileText size={20} className="text-primary-600" />
+                作业信息 <span className="text-xs font-normal text-muted-foreground ml-2">AI自动识别，可修改</span>
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">作业名称</label>
+                  <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none" />
+                </div>
+                <div className="grid sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">科目</label>
+                    <select value={subject} onChange={e => setSubject(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none bg-white">
+                      <option>数学</option><option>语文</option><option>英语</option><option>科学</option><option>其他</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">所属班级</label>
+                    <select value={selectedClass} onChange={e => {
+                      setSelectedClass(e.target.value);
+                      fetch(`/api/students?classId=${e.target.value}`).then(r=>r.json()).then(d=>setStudents(d.students||[]));
+                    }}
+                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none bg-white">
+                      {classList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {classList.length === 0 && <option value="">加载中...</option>}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2 flex items-center gap-1">
+                      <Calendar size={16} /> 截止日期
+                    </label>
+                    <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-border focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white rounded-2xl border border-border p-6">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <User size={20} className="text-primary-600" />

@@ -10,24 +10,31 @@ interface ParseRequest {
   subjectHint?: string;
 }
 
-const SYSTEM_PROMPT = `你是一位专业的中国小学生作业识别助手。你将收到小学生手写作业/试卷的照片。
+const SYSTEM_PROMPT = `你是一位专业的中国小学生作业识别助手。你将收到小学生手写作业/试卷的照片（可能是多页）。
 请极其仔细地识别，输出严格JSON，不要任何其他文字、解释、markdown标记。
 
 识别要求：
-1. 在试卷顶部找到"姓名""班级""学号"等填写区域，准确识别学生手写的姓名和班级
-2. 按印刷编号顺序逐题识别，区分印刷题目文字和学生的手写作答
-3. 选择题要完整还原A/B/C/D选项文本，并识别学生勾选/填写的答案
-4. 判断题识别学生打勾√、打叉×、或写"对/错""正确/错误""√/×"
-5. 填空题识别学生写在横线上/括号里的内容
-6. 数学题还原算式、数字、运算符号、单位，分数/竖式尽量用文字表达
-7. 基于题目内容，客观题请给出你判断的标准答案；主观题/解答题suggestedCorrectAnswer留空字符串
-8. 任何模糊、无法辨认的字用[?]标记，该题confidence设为0.5以下
-9. 题型type只能是: choice(选择题), judge(判断题), fill(填空题), math(数学解答题), short_answer(简答题), essay(作文题)
+1. 在试卷最顶部/标题区识别：
+   - **作业名称/试卷标题**：通常是最大号的印刷字，比如"第三单元测试卷""数学练习十""二年级语文课后作业"等
+   - **科目**：数学/语文/英语/科学等，根据标题和题目内容推断
+   - **年级/班级**：试卷顶部通常印有"____年级____班"等信息，识别印刷的年级和学生手写填写的班级
+2. 在试卷顶部"姓名""班级""学号"填写区，准确识别学生手写填写的姓名和班级
+3. 按印刷编号顺序逐题识别，区分印刷题目文字和学生的手写作答
+4. 选择题要完整还原A/B/C/D选项文本，并识别学生勾选/填写的答案
+5. 判断题识别学生打勾√、打叉×、或写"对/错""正确/错误""√/×"
+6. 填空题识别学生写在横线上/括号里的内容
+7. 数学题还原算式、数字、运算符号、单位，分数/竖式尽量用文字表达
+8. 基于题目内容，客观题请给出你判断的标准答案；主观题/解答题suggestedCorrectAnswer留空字符串
+9. 任何模糊、无法辨认的字用[?]标记，该题confidence设为0.5以下
+10. 题型type只能是: choice(选择题), judge(判断题), fill(填空题), math(数学解答题), short_answer(简答题), essay(作文题)
 
 输出JSON Schema:
 {
-  "studentName": "识别到的姓名，未识别则空字符串",
-  "className": "识别到的班级，未识别则空字符串",
+  "title": "试卷标题/作业名称，未识别则根据科目和内容自动命名，如「数学作业」",
+  "subject": "数学|语文|英语|科学|其他",
+  "grade": "年级，如「三年级」「二年级」",
+  "studentName": "学生手写的姓名，未识别则空字符串",
+  "className": "学生手写的班级（如「2班」），结合grade合成「三年级2班」格式",
   "studentNo": "学号或null",
   "questions": [
     {
@@ -73,6 +80,8 @@ export async function POST(req: Request) {
     let studentName = '';
     let className = '';
     let studentNo: string | null = null;
+    let paperTitle = '';
+    let paperSubject = '数学';
     let confidenceSum = 0;
     let confidenceCount = 0;
 
@@ -150,8 +159,21 @@ export async function POST(req: Request) {
 
         if (pageIdx === 0) {
           studentName = (parsed.studentName || '').trim();
-          className = (parsed.className || '').trim();
+          // 合成完整班级：年级+班别，如"三年级2班"
+          const g = (parsed.grade || '').trim();
+          const c = (parsed.className || '').trim();
+          if (g && c) {
+            className = (g + c).replace(/班班$/, '班');
+          } else if (c) {
+            className = c;
+          } else if (g) {
+            className = g;
+          }
+          if (classHint && !className) className = classHint;
           studentNo = parsed.studentNo || null;
+          // 提取首页的title/subject
+          paperTitle = (parsed.title || '').trim();
+          paperSubject = (parsed.subject || '数学').trim() || '数学';
         }
 
         const qs = Array.isArray(parsed.questions) ? parsed.questions : [];
@@ -195,9 +217,19 @@ export async function POST(req: Request) {
 
     const avgConfidence = confidenceCount > 0 ? confidenceSum / confidenceCount : 0;
 
+    // 如果没识别到标题，用默认命名
+    if (!paperTitle) {
+      paperTitle = `${paperSubject}作业`;
+    }
+    // 置信度警告
+    if (!studentName) warnings.push('未能识别到学生姓名，请在下一步手动选择或输入');
+    if (!className) warnings.push('未能识别到班级信息，请在下一步手动确认');
+
     return NextResponse.json({
       success: true,
       paper: {
+        title: paperTitle,
+        subject: paperSubject,
         studentName,
         className,
         studentNo,
