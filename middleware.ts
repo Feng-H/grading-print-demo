@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { auth } from "./auth";
 import { NextResponse } from "next/server";
 
 export default auth((req) => {
@@ -9,34 +9,39 @@ export default auth((req) => {
   const isTeacherRoute = nextUrl.pathname.startsWith("/teacher");
   const isParentRoute = nextUrl.pathname.startsWith("/parent");
   const isLoginPage = nextUrl.pathname === "/login";
-  const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-  const isPublicRoute = nextUrl.pathname === "/";
+  const isPublicRoute = nextUrl.pathname === "/" || nextUrl.pathname.startsWith("/api/auth");
+  const isApiRoute = nextUrl.pathname.startsWith("/api/");
 
-  // API认证路由放行
-  if (isApiAuthRoute) {
+  // API auth路由放行
+  if (nextUrl.pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
 
-  // 已登录访问登录页，根据角色跳转到对应首页
+  // 公开路由放行
+  if (isPublicRoute) {
+    return NextResponse.next();
+  }
+
+  // 已登录访问登录页，根据角色跳转
   if (isLoggedIn && isLoginPage) {
     if (userRole === "teacher") {
       return NextResponse.redirect(new URL("/teacher", nextUrl));
-    } else if (userRole === "parent") {
+    }
+    if (userRole === "parent") {
       return NextResponse.redirect(new URL("/parent", nextUrl));
     }
   }
 
-  // 未登录访问受保护路由，跳转到登录页
-  if (!isLoggedIn && (isTeacherRoute || isParentRoute)) {
-    let callbackUrl = nextUrl.pathname;
-    if (nextUrl.search) {
-      callbackUrl += nextUrl.search;
+  // 未登录访问受保护路由
+  if (!isLoggedIn && (isTeacherRoute || isParentRoute || isLoginPage === false)) {
+    // 非登录页且未登录，重定向到登录页
+    if (isTeacherRoute || isParentRoute) {
+      const callbackUrl = encodeURIComponent(nextUrl.pathname + nextUrl.search);
+      return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, nextUrl));
     }
-    const encodedCallbackUrl = encodeURIComponent(callbackUrl);
-    return NextResponse.redirect(new URL(`/login?callbackUrl=${encodedCallbackUrl}`, nextUrl));
   }
 
-  // 已登录，角色不匹配时跳转到对应角色首页
+  // 角色不匹配跳转
   if (isLoggedIn) {
     if (isTeacherRoute && userRole !== "teacher") {
       return NextResponse.redirect(new URL("/parent", nextUrl));
@@ -49,10 +54,16 @@ export default auth((req) => {
   return NextResponse.next();
 });
 
+// 只匹配需要保护的路由，减少middleware执行
 export const config = {
   matcher: [
-    "/login",
-    "/teacher/:path*",
-    "/parent/:path*",
+    /*
+     * 匹配所有路径除了：
+     * - _next/static (静态资源)
+     * - _next/image (图片优化)
+     * - favicon.ico
+     * - public文件夹
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

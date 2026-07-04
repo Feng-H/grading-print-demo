@@ -1,4 +1,4 @@
-import NextAuth, { type CredentialsSignin } from "next-auth";
+import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import type { UserRole } from "@/types";
 
@@ -22,40 +22,46 @@ const DEMO_USERS = [
   },
 ];
 
-class InvalidLoginError extends CredentialsSignin {
-  code = "Invalid username or password";
-}
+// 生成默认AUTH_SECRET用于开发，生产环境必须配置环境变量
+const NEXTAUTH_SECRET = process.env.AUTH_SECRET || "dev-insecure-secret-change-this-in-production-please";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
+      name: "credentials",
       credentials: {
         username: { label: "用户名", type: "text" },
         password: { label: "密码", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
-          throw new InvalidLoginError();
+        try {
+          if (!credentials?.username || !credentials?.password) {
+            return null;
+          }
+
+          const username = String(credentials.username).trim();
+          const password = String(credentials.password).trim();
+
+          // TODO: 数据库连通后替换为prisma查询
+          const user = DEMO_USERS.find(
+            (u) => u.username === username && u.password === password
+          );
+
+          if (user) {
+            return {
+              id: user.id,
+              name: user.name,
+              email: `${user.username}@local`,
+              role: user.role,
+              avatar: user.avatar,
+            };
+          }
+
+          return null;
+        } catch (error) {
+          console.error("Auth error:", error);
+          return null;
         }
-
-        const username = String(credentials.username);
-        const password = String(credentials.password);
-
-        const user = DEMO_USERS.find(
-          (u) => u.username === username && u.password === password
-        );
-
-        if (user) {
-          return {
-            id: user.id,
-            name: user.name,
-            email: `${user.username}@demo.local`,
-            role: user.role,
-            avatar: user.avatar,
-          };
-        }
-
-        return null;
       },
     }),
   ],
@@ -63,9 +69,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/login",
     error: "/login",
   },
-  session: { strategy: "jwt" },
-  secret: process.env.AUTH_SECRET || "dev-secret-key",
+  session: {
+    strategy: "jwt",
+    maxAge: 7 * 24 * 60 * 60, // 7天
+  },
+  secret: NEXTAUTH_SECRET,
   trustHost: true,
+  debug: process.env.NODE_ENV === "development",
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -77,11 +87,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = token.role;
-        (session.user as any).id = token.id;
-        (session.user as any).avatar = token.avatar;
+        session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
+        session.user.avatar = token.avatar as string;
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      // 确保重定向只到同源URL，防止开放重定向
+      if (url.startsWith(baseUrl)) return url;
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      return baseUrl;
     },
   },
 });
@@ -104,7 +120,7 @@ declare module "next-auth" {
   }
 }
 
-declare module "@auth/core/jwt" {
+declare module "next-auth/jwt" {
   interface JWT {
     role: UserRole;
     id: string;
