@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/../auth';
+import { auth } from '../../../../../auth';
 
 // SiliconFlow API兼容OpenAI格式
 const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';

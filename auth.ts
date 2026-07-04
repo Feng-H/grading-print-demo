@@ -1,8 +1,8 @@
-import NextAuth from "next-auth";
+import NextAuth, { type CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import type { UserRole } from "@/types";
 
-// 预设演示账号 - 后续连接数据库后替换为数据库查询
+// 预设演示账号
 const DEMO_USERS = [
   {
     id: "demo-teacher",
@@ -22,6 +22,10 @@ const DEMO_USERS = [
   },
 ];
 
+class InvalidLoginError extends CredentialsSignin {
+  code = "Invalid username or password";
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
@@ -31,13 +35,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) {
-          return null;
+          throw new InvalidLoginError();
         }
 
-        const username = credentials.username as string;
-        const password = credentials.password as string;
+        const username = String(credentials.username);
+        const password = String(credentials.password);
 
-        // TODO: 数据库连通后替换为prisma.user.findUnique查询
         const user = DEMO_USERS.find(
           (u) => u.username === username && u.password === password
         );
@@ -46,7 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return {
             id: user.id,
             name: user.name,
-            email: `${user.username}@demo.com`,
+            email: `${user.username}@demo.local`,
             role: user.role,
             avatar: user.avatar,
           };
@@ -58,14 +61,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   session: { strategy: "jwt" },
+  secret: process.env.AUTH_SECRET || "dev-secret-key",
+  trustHost: true,
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role as UserRole;
+        token.role = user.role;
         token.id = user.id;
-        token.avatar = user.avatar as string;
+        token.avatar = user.avatar;
       }
       return token;
     },
@@ -78,10 +84,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  secret: process.env.AUTH_SECRET || "dev-secret-change-me-in-production",
 });
 
-// 扩展NextAuth类型定义
+// 扩展类型
 declare module "next-auth" {
   interface User {
     role: UserRole;
@@ -90,8 +95,9 @@ declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-      name: string;
-      email: string;
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
       role: UserRole;
       avatar: string;
     };
