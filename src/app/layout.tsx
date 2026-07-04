@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
+import Providers from "@/components/Providers";
 
 const notoSans = Noto_Sans_SC({
   variable: "--font-noto-sans",
@@ -21,7 +22,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={`${notoSans.variable} h-full`}>
       <body className="min-h-full bg-background text-foreground antialiased">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

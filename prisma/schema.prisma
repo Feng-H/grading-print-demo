@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表（老师/家长）
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  passwordHash  String
+  name          String
+  role          String    // "teacher" | "parent"
+  avatar        String    @default("👤")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // 关联
+  classes       Class[]       @relation("TeacherClasses") // 老师教的班级
+  children      Student[]     @relation("ParentChildren")  // 家长的孩子
+  homeworks     Homework[]    @relation("TeacherHomeworks")
+  submissions   Submission[]
+}
+
+// 班级
+model Class {
+  id            String    @id @default(cuid())
+  name          String
+  grade         String
+  subject       String
+  studentCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  teacherId     String
+  teacher       User      @relation("TeacherClasses", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  students      Student[]
+  homeworks     Homework[]
+}
+
+// 学生
+model Student {
+  id            String    @id @default(cuid())
+  name          String
+  avatar        String    @default("👦")
+  studentNo     String
+  className     String
+
+  classId       String
+  class         Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  parentId      String?
+  parent        User?     @relation("ParentChildren", fields: [parentId], references: [id], onDelete: SetNull)
+
+  submissions   Submission[]
+}
+
+// 作业/试卷
+model Homework {
+  id            String    @id @default(cuid())
+  title         String
+  description   String
+  subject       String
+  totalScore    Int       @default(100)
+  status        String    @default("pending") // pending|grading|graded|published
+  deadline      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  classId       String
+  class         Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  teacherId     String
+  teacher       User      @relation("TeacherHomeworks", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  questions     Question[]
+  submissions   Submission[]
+}
+
+// 题目
+model Question {
+  id                String   @id @default(cuid())
+  type              String   // choice|judge|fill|math|short_answer|essay
+  content           String
+  options           String[] // 选择题选项，JSON数组字符串
+  correctAnswer     String
+  score             Int
+  knowledgePointId  String
+  knowledgePointName String
+  difficulty        Int      @default(2) // 1简单 2中等 3难
+  order             Int      @default(0)
+
+  homeworkId        String
+  homework          Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  answers           StudentAnswer[]
+  gradingResults    GradingResult[]
+}
+
+// 学生提交的答案
+model StudentAnswer {
+  id            String   @id @default(cuid())
+  answer        String
+  imageUrl      String?
+
+  questionId    String
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+}
+
+// 学生提交
+model Submission {
+  id            String   @id @default(cuid())
+  submitTime    DateTime @default(now())
+  totalScore    Int?
+  aiComment     String?
+  status        String   @default("submitted") // submitted|grading|graded
+
+  homeworkId    String
+  homework      Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  teacherId     String
+  teacher       User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  answers       StudentAnswer[]
+  gradingResults GradingResult[]
+}
+
+// 批改结果
+model GradingResult {
+  id            String   @id @default(cuid())
+  score         Int
+  maxScore      Int
+  isCorrect     Boolean
+  comment       String
+  errorType     String?  // concept|calculation|careless|expression
+  correctAnswer String
+
+  questionId    String
+  question      Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

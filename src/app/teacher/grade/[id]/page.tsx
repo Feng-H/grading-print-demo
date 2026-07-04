@@ -32,30 +32,75 @@ export default function GradePage() {
   const [editScore, setEditScore] = useState<number>(0);
   const [editComment, setEditComment] = useState('');
   const [published, setPublished] = useState(false);
+  const [error, setError] = useState('');
+  const [warningMsg, setWarningMsg] = useState('');
 
   const totalScore = results.reduce((sum, r) => sum + r.score, 0);
   const maxScore = results.reduce((sum, r) => sum + r.maxScore, 0);
 
-  // 模拟AI批改过程
-  const startGrading = () => {
+  // 真实AI批改 - 调用后端API
+  const startGrading = async () => {
     setGrading(true);
-    setGradingProgress(0);
+    setGradingProgress(10);
     setResults([]);
+    setError('');
+    setWarningMsg('');
 
-    const interval = setInterval(() => {
-      setGradingProgress(prev => {
-        const next = prev + Math.random() * 15 + 5;
-        if (next >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setResults(sampleGradingResults as GradingResult[]);
-            setGrading(false);
-          }, 300);
-          return 100;
-        }
-        return next;
+    // 构造请求参数
+    const answers: Record<string, string> = {};
+    sampleSubmission.answers.forEach(a => {
+      answers[a.questionId] = a.answer;
+    });
+
+    // 进度动画
+    const progressInterval = setInterval(() => {
+      setGradingProgress(prev => Math.min(prev + Math.random() * 8 + 3, 85));
+    }, 500);
+
+    try {
+      const response = await fetch('/api/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questions: homework.questions.map(q => ({
+            id: q.id,
+            type: q.type,
+            content: q.content,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            score: q.score,
+            knowledgePointName: q.knowledgePointName,
+          })),
+          answers,
+        }),
       });
-    }, 400);
+
+      clearInterval(progressInterval);
+      setGradingProgress(95);
+
+      if (!response.ok) {
+        throw new Error('批改请求失败');
+      }
+
+      const data = await response.json();
+
+      if (data.warning) {
+        setWarningMsg(data.warning);
+      }
+
+      setGradingProgress(100);
+      setTimeout(() => {
+        setResults(data.results as GradingResult[]);
+        setGrading(false);
+      }, 500);
+    } catch (err) {
+      clearInterval(progressInterval);
+      console.error('Grading error:', err);
+      setError('AI批改失败，请稍后重试，或手动批阅。');
+      setGrading(false);
+      // 降级：使用Mock结果
+      setResults(sampleGradingResults as GradingResult[]);
+    }
   };
 
   const handleEdit = (result: GradingResult) => {
@@ -136,6 +181,20 @@ export default function GradePage() {
               )}
             </div>
           </div>
+
+          {/* 警告提示（未配置API Key） */}
+          {warningMsg && !grading && (
+            <div className="mt-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              ⚠️ {warningMsg}
+            </div>
+          )}
+
+          {/* 错误提示 */}
+          {error && !grading && (
+            <div className="mt-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+              {error}
+            </div>
+          )}
 
           {/* 批改中进度条 */}
           {grading && (

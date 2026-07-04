@@ -1,7 +1,38 @@
+'use client';
+
 import Link from 'next/link';
-import { BookOpen, Users, Sparkles, Brain, BarChart3, MessageSquare } from 'lucide-react';
+import { BookOpen, Users, Sparkles, Brain, BarChart3, MessageSquare, LogIn } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // 已登录自动跳转到对应角色首页
+  useEffect(() => {
+    if (status === 'authenticated') {
+      if (session.user.role === 'teacher') {
+        router.push('/teacher');
+      } else if (session.user.role === 'parent') {
+        router.push('/parent');
+      }
+    }
+  }, [status, session, router]);
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-hero flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (status === 'authenticated') {
+    return null; // 正在跳转
+  }
+
   return (
     <div className="min-h-screen bg-hero pb-16 md:pb-0">
       {/* 顶部导航 */}
@@ -15,9 +46,13 @@ export default function Home() {
               智学通
             </span>
           </div>
-          <div className="text-sm text-muted-foreground hidden sm:block">
-            AI赋能 · 家校协同
-          </div>
+          <Link
+            href="/login"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-border text-sm font-medium hover:bg-muted transition-colors"
+          >
+            <LogIn size={18} />
+            <span className="hidden sm:inline">登录</span>
+          </Link>
         </div>
       </nav>
 
@@ -43,7 +78,7 @@ export default function Home() {
           {/* 角色选择 */}
           <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
             <Link
-              href="/teacher"
+              href="/login"
               className="group card-hover rounded-3xl bg-white p-6 sm:p-8 border border-border shadow-xl shadow-primary-500/5 text-left relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-100 to-transparent rounded-bl-full opacity-60 group-hover:scale-110 transition-transform duration-500"></div>
@@ -65,14 +100,14 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="mt-6 flex items-center text-primary-600 font-medium group-hover:gap-3 gap-2 transition-all">
-                  进入工作台
+                  登录进入工作台
                   <span>→</span>
                 </div>
               </div>
             </Link>
 
             <Link
-              href="/parent"
+              href="/login"
               className="group card-hover rounded-3xl bg-white p-6 sm:p-8 border border-border shadow-xl shadow-accent-500/5 text-left relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent-100 to-transparent rounded-bl-full opacity-60 group-hover:scale-110 transition-transform duration-500"></div>
@@ -94,7 +129,7 @@ export default function Home() {
                   ))}
                 </div>
                 <div className="mt-6 flex items-center text-accent-600 font-medium group-hover:gap-3 gap-2 transition-all">
-                  查看孩子情况
+                  登录查看孩子情况
                   <span>→</span>
                 </div>
               </div>
