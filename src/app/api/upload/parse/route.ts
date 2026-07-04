@@ -68,11 +68,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '请上传至少一张图片' }, { status: 400 });
     }
 
-    // 图片大小限制检查（dataURL 大小粗略判断，单张base64约<=10MB即原文件<=7.5MB）
+    // 图片大小限制检查：单张base64不超过~4MB（约原图3MB），避免Vercel body限制
+    const MAX_PER_IMAGE = 4.5 * 1024 * 1024;
+    const TOTAL_MAX = 18 * 1024 * 1024;
+    let totalSize = 0;
     for (let i = 0; i < images.length; i++) {
-      if (images[i].length > 12 * 1024 * 1024) {
-        return NextResponse.json({ error: `第${i+1}张图片过大，请压缩后上传（建议小于8MB）` }, { status: 400 });
+      const sz = images[i].length;
+      totalSize += sz;
+      if (sz > MAX_PER_IMAGE) {
+        return NextResponse.json(
+          { error: `第${i+1}张图片过大(${(sz/1024/1024).toFixed(1)}MB)，请拍照时离远一点或降低清晰度后再试` },
+          { status: 413 }
+        );
       }
+    }
+    if (totalSize > TOTAL_MAX) {
+      return NextResponse.json(
+        { error: `所有图片总大小过大(${(totalSize/1024/1024).toFixed(1)}MB)，建议分批上传或减少页数` },
+        { status: 413 }
+      );
     }
 
     const warnings: string[] = [];

@@ -16,7 +16,7 @@ async function getPdfjs() {
   return pdfjs;
 }
 
-export async function pdfToDataUrls(file: File, scale = 1.5): Promise<string[]> {
+export async function pdfToDataUrls(file: File, scale = 1.2): Promise<string[]> {
   const pdfjs = await getPdfjs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
@@ -30,7 +30,7 @@ export async function pdfToDataUrls(file: File, scale = 1.5): Promise<string[]> 
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d')!;
     await page.render({ canvasContext: ctx, viewport }).promise;
-    results.push(canvas.toDataURL('image/jpeg', 0.85));
+    results.push(canvas.toDataURL('image/jpeg', 0.75));
   }
   return results;
 }

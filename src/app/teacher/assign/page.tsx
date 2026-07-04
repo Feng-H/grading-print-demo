@@ -8,6 +8,7 @@ import {
   AlertCircle, Edit3, Wand2, Award, ArrowLeft, User,
 } from 'lucide-react';
 import { pdfToDataUrls, fileToDataUrl } from './pdf-client';
+import { compressImage, dataUrlSizeKB } from './image-utils';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 type QType = 'choice' | 'judge' | 'fill' | 'math' | 'short_answer' | 'essay';
@@ -87,17 +88,28 @@ export default function AssignHomework() {
   const addImage = useCallback(async (file: File) => {
     try {
       if (file.type === 'application/pdf') {
-        const pages = await pdfToDataUrls(file, 1.5);
+        const pages = await pdfToDataUrls(file, 1.2);
+        pages.forEach((url, i) => {
+          console.log(`PDF页${i+1}压缩后大小: ${dataUrlSizeKB(url)}KB`);
+        });
         setFileItems(prev => [
           ...prev,
           ...pages.map((url, i) => ({
-            id: `${file.name}-${i}-${Date.now()}`,
+            id: `${file.name}-${i}-${Date.now()}-${i}`,
             name: pages.length > 1 ? `${file.name}（第${i+1}页）` : file.name,
             url, kind: 'pdf-page' as const,
           })),
         ]);
       } else if (file.type.startsWith('image/')) {
-        const url = await fileToDataUrl(file);
+        // 自动压缩大图
+        const rawUrl = await fileToDataUrl(file);
+        const rawSize = dataUrlSizeKB(rawUrl);
+        let url = rawUrl;
+        if (rawSize > 800) {
+          // 超过800KB先压缩
+          url = await compressImage(file, rawSize > 2000 ? 1280 : 1600, rawSize > 3000 ? 0.7 : 0.8);
+          console.log(`图片压缩: ${rawSize}KB → ${dataUrlSizeKB(url)}KB`);
+        }
         setFileItems(prev => [...prev, {
           id: `${file.name}-${Date.now()}`, name: file.name, url, kind: 'image' as const,
         }]);
