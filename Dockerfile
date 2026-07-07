@@ -15,13 +15,12 @@ RUN apk add --no-cache \
   openssl-dev \
   ca-certificates
 
-COPY package.json ./
-# 注意：故意不复制package-lock.json，在容器内重新npm install
-# 原因：Mac(darwin-arm64)上生成的lock只包含darwin平台的optional native二进制
-# (lightningcss, @tailwindcss/oxide, sharp等)，linux-alpine(x64-musl)需要的二进制
-# 不会被npm ci/npm install按lock装进来，导致构建时找不到模块。
-# 删掉lock让npm在容器内根据alpine平台重新解析依赖，版本仍按package.json的^约束。
-RUN npm install --no-audit --no-fund \
+COPY package.json package-lock.json* ./
+# 不用npm ci：Mac生成的lock缺linux-musl原生二进制，npm ci不会补装
+# 用npm install自动补装当前平台(alpine x64-musl)缺失的optionalDependencies
+RUN npm install --no-audit --no-fund
+# 强制降级到Prisma 5（不带lock时npm install会装最新Prisma 7，不兼容现有schema）
+RUN npm install --no-save --no-audit --no-fund prisma@5.22.0 @prisma/client@5.22.0 \
   && npm rebuild lightningcss sharp canvas 2>&1 | tail -5
 
 COPY prisma ./prisma
