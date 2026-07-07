@@ -16,9 +16,12 @@ RUN apk add --no-cache \
   ca-certificates
 
 COPY package.json package-lock.json* ./
-# 注意：用npm install而不是npm ci —— 因为Mac上生成的package-lock.json缺少linux-musl平台
-# 的optional二进制(lightningcss/sharp/canvas)，npm install会自动补装当前平台缺失的可选依赖
-RUN npm install --no-audit --no-fund
+# Mac生成lock不含linux-musl原生二进制，显式强制安装
+RUN npm install --no-audit --no-fund \
+  && npm install --no-save --no-audit --no-fund \
+    lightningcss-linux-x64-musl \
+    @img/sharp-linuxmusl-x64 \
+  && npm rebuild lightningcss sharp canvas 2>&1 | tail -5
 
 COPY prisma ./prisma
 RUN npx prisma generate
