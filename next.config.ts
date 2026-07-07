@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // 解决NextAuth在Vercel部署时的域名信任问题
+  output: 'standalone',
   experimental: {
     serverActions: {
-      bodySizeLimit: '20mb',
+      bodySizeLimit: '200mb', // 支持大PDF上传
     },
   },
+  serverExternalPackages: ['pdf-lib', 'sharp', 'canvas', 'ipp', 'pdfjs-dist'],
   images: {
     remotePatterns: [
       {

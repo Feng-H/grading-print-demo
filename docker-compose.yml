@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: swp-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://swp:${POSTGRES_PASSWORD}@postgres:5432/swp
+      - STORAGE_ROOT=/data/storage
+      - RUN_QUEUE=1
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - swp-storage:/data/storage
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: swp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: swp
+      POSTGRES_USER: swp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - swp-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  swp-storage:
+  swp-postgres:

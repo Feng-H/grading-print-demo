@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
-import { ArrowLeft, BookOpen, Home, BarChart3, FilePlus, LogOut } from 'lucide-react';
+import { ArrowLeft, BookOpen, Home, BarChart3, FilePlus, LogOut, Layers, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface NavbarProps {
@@ -25,8 +25,10 @@ export default function Navbar({ role: propRole, title, showBack = false, backUr
 
   const teacherLinks = [
     { href: '/teacher', label: '工作台', icon: Home },
-    { href: '/teacher/assign', label: '布置作业', icon: FilePlus },
+    { href: '/teacher/batches', label: '批次管理', icon: Layers },
+    { href: '/teacher/assign', label: '手动批改', icon: FilePlus },
     { href: '/teacher/analytics', label: '学情分析', icon: BarChart3 },
+    { href: '/teacher/settings', label: '设置', icon: Settings },
   ];
 
   const parentLinks = [

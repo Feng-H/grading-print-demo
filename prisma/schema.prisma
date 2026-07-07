@@ -26,6 +26,8 @@ model User {
   children      Student[]     @relation("ParentChildren")  // 家长的孩子
   homeworks     Homework[]    @relation("TeacherHomeworks")
   submissions   Submission[]
+  batches       PaperBatch[]  @relation("TeacherBatches")
+  printJobs     PrintJob[]    @relation("PrintJobRequester")
 }
 
 // 班级
@@ -42,6 +44,7 @@ model Class {
 
   students      Student[]
   homeworks     Homework[]
+  batches       PaperBatch[]
 }
 
 // 学生
@@ -59,6 +62,7 @@ model Student {
   parent        User?     @relation("ParentChildren", fields: [parentId], references: [id], onDelete: SetNull)
 
   submissions   Submission[]
+  sheets        PaperSheet[]
 }
 
 // 作业/试卷
@@ -70,10 +74,14 @@ model Homework {
   totalScore      Int       @default(100)
   status          String    @default("pending") // pending|grading|graded|published
   deadline        DateTime?
-  sourceImageUrls String[]  @default([]) // 原始上传图片（原型阶段存dataURL）
+  sourceImageUrls String[]  @default([]) // 原始上传图片（兼容旧流程，dataURL）
   isDemo          Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  // === 新增字段 ===
+  pagesPerStudent Int       @default(2) // 每份试卷页数，默认2（正反面）
+  answerKeyJson   Json?     // 标准答案+题位JSON
 
   classId       String
   class         Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -83,6 +91,7 @@ model Homework {
 
   questions     Question[]
   submissions   Submission[]
+  batches       PaperBatch[]
 }
 
 // 题目
@@ -98,11 +107,16 @@ model Question {
   difficulty        Int      @default(2) // 1简单 2中等 3难
   order             Int      @default(0)
 
+  // === 新增字段：题位信息 ===
+  page              Int?     // 题目所在页码（0-based）
+  bboxJson          Json?    // {x,y,w,h} 百分比坐标
+
   homeworkId        String
   homework          Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
 
   answers           StudentAnswer[]
   gradingResults    GradingResult[]
+  annotations       Annotation[]
 }
 
 // 学生提交的答案
@@ -124,8 +138,12 @@ model Submission {
   submitTime      DateTime @default(now())
   totalScore      Int?
   aiComment       String?
-  status          String   @default("submitted") // submitted|grading|graded
+  status          String   @default("queued")
+  // 状态扩展: queued|ocr|grading|annotated|rendered|needs_review|approved|printing|printed|failed
   ocrConfidence   Float?   // OCR识别平均置信度
+  annotationVersion Int    @default(0)
+  teacherApprovedAt DateTime?
+  teacherApprovedBy String?
 
   homeworkId    String
   homework      Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
@@ -136,8 +154,15 @@ model Submission {
   teacherId     String
   teacher       User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
+  // === 新增关联 ===
+  sheetId       String?  @unique
+  sheet         PaperSheet? @relation(fields: [sheetId], references: [id], onDelete: SetNull)
+
   answers       StudentAnswer[]
   gradingResults GradingResult[]
+  annotations   Annotation[]
+  generatedPdfs GeneratedPdf[] @relation("SubmissionGeneratedPdfs")
+  printJobs     PrintJob[]     @relation("SubmissionPrintJobs")
 }
 
 // 批改结果
@@ -158,4 +183,159 @@ model GradingResult {
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@unique([questionId, submissionId])
+}
+
+// ==================== 新增模型 ====================
+
+// 扫描批次：一次扫描上传的全班PDF
+model PaperBatch {
+  id                  String   @id @default(cuid())
+  sourceType          String   // webdav|manual|stress_test
+  sourceUri           String?  // WebDAV路径或手动上传的原始key
+  originalPdfPath     String   // 原始PDF文件在storage中的路径
+  pageCount           Int
+  pagesPerStudent     Int      @default(2)
+  expectedStudentCount Int?
+  splitStrategy       String   @default("fixed") // fixed|ai
+  status              String   // uploading|splitting|ocr|grading|annotating|rendering|ready|partial|failed
+  error               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  homeworkId          String?
+  homework            Homework? @relation(fields: [homeworkId], references: [id], onDelete: SetNull)
+
+  classId             String?
+  class               Class?   @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  teacherId           String
+  teacher             User     @relation("TeacherBatches", fields: [teacherId], references: [id], onDelete: Cascade)
+
+  sheets              PaperSheet[]
+  printJobs           PrintJob[] @relation("BatchPrintJobs")
+}
+
+// 拆分出的每份学生试卷
+model PaperSheet {
+  id                  String   @id @default(cuid())
+  orderIndex          Int      // 在batch中的顺序（0-based）
+  pageRangeStart      Int      // 起始页（0-based，包含）
+  pageRangeEnd        Int      // 结束页（0-based，包含）
+  pageImagePaths      String[] // 每页JPG在storage中的路径
+  detectedName        String?  // AI识别的姓名
+  detectedStudentNo   String?  // AI识别的学号
+  nameConfidence      Float?
+  status              String   // queued|ocr|grading|annotated|rendered|needs_review|failed|submitted
+  error               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  batchId             String
+  batch               PaperBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  studentId           String?
+  student             Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  submission          Submission?
+}
+
+// 批注元素（相对页百分比坐标，驱动无关）
+model Annotation {
+  id                  String   @id @default(cuid())
+  kind                String   // check|cross|score|comment|circle|underline|arrow|freehand
+  page                Int      // 页码（0-based）
+  xPct                Float    // 中心点/起点X（0-1）
+  yPct                Float    // 中心点/起点Y（0-1）
+  wPct                Float?   // 宽度（0-1）
+  hPct                Float?   // 高度（0-1）
+  text                String?  // 文字内容，如"√""×""-2""+5""注意进位"
+  strokePath          Json?    // 圈画/自由绘：[[x,y],[x,y]...]（百分比坐标）
+  color               String   @default("#E11D48") // 红色
+  fontSize            Int?     // 字号（相对尺寸）
+  strokeWidth         Int?
+  source              String   @default("ai") // ai|teacher
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  submissionId        String
+  submission          Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  questionId          String?
+  question            Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+}
+
+// 生成的PDF文件
+model GeneratedPdf {
+  id                  String   @id @default(cuid())
+  kind                String   // merged（原卷+批注合成）| overlay（纯批注白底套打）
+  path                String   // storage中的文件路径
+  sizeBytes           Int
+  checksum            String?  // 文件校验
+  generatedAt         DateTime @default(now())
+
+  submissionId        String
+  submission          Submission @relation("SubmissionGeneratedPdfs", fields: [submissionId], references: [id], onDelete: Cascade)
+
+  printJobs           PrintJob[] @relation("PdfPrintJobs")
+
+  @@unique([submissionId, kind])
+}
+
+// 打印任务
+model PrintJob {
+  id                  String   @id @default(cuid())
+  protocol            String   // raw|ipp
+  copies              Int      @default(1)
+  status              String   // pending|generating|printing|success|failed|canceled
+  attempts            Int      @default(0)
+  lastError           String?
+  fileSizeBytes       Int?
+  isStressTest        Boolean  @default(false)
+  stressTestCopies    Int?     // 压测：源PDF复制份数
+  requestedAt         DateTime @default(now())
+  sentAt              DateTime?
+  finishedAt          DateTime?
+
+  submissionId        String?
+  submission          Submission? @relation("SubmissionPrintJobs", fields: [submissionId], references: [id], onDelete: SetNull)
+
+  pdfId               String?
+  pdf                 GeneratedPdf? @relation("PdfPrintJobs", fields: [pdfId], references: [id], onDelete: SetNull)
+
+  batchId             String?
+  batch               PaperBatch? @relation("BatchPrintJobs", fields: [batchId], references: [id], onDelete: SetNull)
+
+  printerHost         String
+  printerPort         Int
+
+  requestedById       String
+  requestedBy         User     @relation("PrintJobRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+}
+
+// 异步任务队列
+model Job {
+  id                  String   @id @default(cuid())
+  kind                String   // split|ocr|grade|annotate|render|stress_gen|print
+  refType             String   // batch|sheet|submission|printjob
+  refId               String
+  status              String   @default("pending") // pending|running|done|failed
+  attempts            Int      @default(0)
+  lastError           String?
+  nextRunAt           DateTime @default(now())
+  priority            Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([refType, refId, kind])
+  @@index([status, priority, nextRunAt])
+}
+
+// WebDAV已处理文件记录（去重）
+model WebdavSeen {
+  id                  String   @id @default(cuid())
+  path                String   @unique
+  mtime               DateTime
+  processedAt         DateTime @default(now())
 }

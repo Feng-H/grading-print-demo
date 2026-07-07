@@ -1,213 +1,203 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
-import { FileText, Clock, CheckCircle, Users, Plus, ArrowRight, AlertCircle, TrendingUp, Loader2 } from 'lucide-react';
-import StatCard from '@/components/ui/StatCard';
-import { homeworkList as mockHomeworkList, currentTeacher, sampleClassAnalytics } from '@/lib/mock-data';
+import useSWR from 'swr';
+import { Upload, Clock, AlertCircle, CheckCircle, Printer, Plus, FileText, Settings, Zap } from 'lucide-react';
+import PrintQueue from '@/components/print/PrintQueue';
 
-interface HwItem {
-  id: string; title: string; description: string; subject: string;
-  totalScore: number; status: string; deadline?: string | null;
-  className: string; questionCount: number; submissionCount: number;
-  totalStudents: number; isDemo: boolean; averageScore?: number | null;
-}
-interface ClassAnalytics {
-  averageScore: number; submissionRate: number;
-  knowledgePointMastery: { id: string; name: string; correctRate: number }[];
-}
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 export default function TeacherDashboard() {
-  const { data: session } = useSession();
-  const [homeworks, setHomeworks] = useState<HwItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [usingMock, setUsingMock] = useState(false);
-  const [analytics, setAnalytics] = useState<ClassAnalytics>({
-    averageScore: sampleClassAnalytics.averageScore,
-    submissionRate: sampleClassAnalytics.submissionRate,
-    knowledgePointMastery: sampleClassAnalytics.knowledgePointMastery,
-  });
+  const { data: batchesData } = useSWR('/api/batches', fetcher, { refreshInterval: 5000 });
+  const batches = batchesData?.batches || [];
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/homework', { cache: 'no-store' });
-        if (!r.ok) throw new Error('api error');
-        const data = await r.json();
-        if (data.homeworks?.length) {
-          setHomeworks(data.homeworks);
-          // 尝试取第一个班级的analytics
-          try {
-            const cls = await fetch('/api/classes').then(x => x.json());
-            if (cls.classes?.[0]) {
-              const cid = cls.classes[0].id;
-              const a = await fetch(`/api/analytics/class/${cid}`).then(x => x.json());
-              if (a && !a.error) {
-                setAnalytics({
-                  averageScore: a.averageScore || sampleClassAnalytics.averageScore,
-                  submissionRate: Math.round(((a.homeworkCount * a.studentCount - 0) / Math.max(1, a.homeworkCount * a.studentCount)) * 100),
-                  knowledgePointMastery: a.knowledgePointMastery || sampleClassAnalytics.knowledgePointMastery,
-                });
-              }
-            }
-          } catch {}
-        } else {
-          // 空数据也回退
-          setHomeworks(mockHomeworkList.map(h => ({
-            id: h.id, title: h.title, description: h.description, subject: h.subject,
-            totalScore: h.totalScore, status: h.status, deadline: h.deadline,
-            className: h.className, questionCount: h.questions.length,
-            submissionCount: h.submissionCount, totalStudents: h.totalStudents, isDemo: true,
-          })));
-          setUsingMock(true);
-        }
-      } catch {
-        // 数据库未就绪，用mock
-        setHomeworks(mockHomeworkList.map(h => ({
-          id: h.id, title: h.title, description: h.description, subject: h.subject,
-          totalScore: h.totalScore, status: h.status, deadline: h.deadline,
-          className: h.className, questionCount: h.questions.length,
-          submissionCount: h.submissionCount, totalStudents: h.totalStudents, isDemo: true,
-        })));
-        setUsingMock(true);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const pendingCount = homeworks.filter(hw => hw.status === 'pending').length;
-  const publishedCount = homeworks.filter(hw => hw.status === 'published' || hw.status === 'graded').length;
-  const avgScore = analytics.averageScore;
-  const submissionRate = analytics.submissionRate;
-  const userName = session?.user?.name || currentTeacher.name;
-
-  const statusLabel = (s: string) => s === 'pending' ? '待批改' : s === 'grading' ? '批改中' : s === 'graded' ? '已批改' : '已发布';
-  const statusClass = (s: string) => s === 'pending' ? 'bg-amber-100 text-amber-700' : s === 'grading' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700';
+  const needsReview = batches.flatMap((b: any) =>
+    (b.sheets || []).filter((s: any) => ['needs_review', 'rendered'].includes(s.status) && s.submission)
+  );
+  const inProgress = batches.filter((b: any) =>
+    ['uploading', 'splitting', 'ocr', 'grading', 'annotating', 'rendering'].includes(b.status)
+  );
+  const approved = batches.flatMap((b: any) =>
+    (b.sheets || []).filter((s: any) => s.status === 'approved' || s.status === 'printing')
+  );
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-fade-in">
-      {usingMock && (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 text-sm flex items-center gap-2">
-          <AlertCircle size={18} />
-          演示模式：数据库未连接，显示示例数据。上传真实试卷后数据会自动保存。
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">早上好，{userName} 👋</h1>
-          <p className="text-muted-foreground mt-1">今天有 {pendingCount} 份作业等待批改，加油！</p>
-        </div>
-        <Link href="/teacher/assign"
-          className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-primary text-white rounded-xl font-medium shadow-lg shadow-primary-500/25 hover:shadow-xl hover:shadow-primary-500/30 transition-all hover:-translate-y-0.5">
-          <Plus size={20} />上传并批改作业
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="待批改" value={pendingCount} icon={Clock} color="warning" suffix="份" />
-        <StatCard title="已批改" value={publishedCount} icon={CheckCircle} color="success" suffix="份" />
-        <StatCard title="班级平均分" value={avgScore} icon={TrendingUp} color="primary" suffix="分" />
-        <StatCard title="作业提交率" value={submissionRate} icon={Users} color="info" suffix="%" />
-      </div>
-
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-border p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <FileText size={20} className="text-primary-600" />作业列表
-            </h2>
-            <Link href="/teacher/analytics" className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
-              查看学情分析 <ArrowRight size={16} />
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">老师工作台</h1>
+            <p className="text-sm text-gray-500 mt-1">试卷智能批改 · 红笔批注 · 远程打印</p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/teacher/batches" className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
+              <FileText size={16} /> 批次列表
+            </Link>
+            <Link href="/teacher/batches" className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2">
+              <Upload size={16} /> 上传试卷批改
+            </Link>
+            <Link href="/teacher/settings" className="p-2 border rounded-lg hover:bg-gray-50" title="设置">
+              <Settings size={18} />
             </Link>
           </div>
+        </div>
+      </header>
 
-          {loading ? (
-            <div className="py-10 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2" />加载中...</div>
-          ) : (
-            <div className="space-y-4">
-              {homeworks.map(hw => (
-                <div key={hw.id} className="p-4 rounded-xl border border-border hover:border-primary-200 hover:bg-primary-50/30 transition-all">
-                  <div className="flex items-start justify-between gap-4 flex-col sm:flex-row">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-semibold truncate">{hw.title}</h3>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusClass(hw.status)}`}>{statusLabel(hw.status)}</span>
-                        {hw.isDemo && <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">示例</span>}
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* 快速入口 */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <StatCard
+            icon={<AlertCircle className="text-orange-500" size={24} />}
+            label="待复核"
+            value={needsReview.length}
+            href="/teacher/batches"
+            color="orange"
+          />
+          <StatCard
+            icon={<Clock className="text-blue-500" size={24} />}
+            label="批改中"
+            value={inProgress.length}
+            color="blue"
+            processing
+          />
+          <StatCard
+            icon={<CheckCircle className="text-emerald-500" size={24} />}
+            label="待打印/打印中"
+            value={approved.length}
+            href="/teacher/batches"
+            color="emerald"
+          />
+          <StatCard
+            icon={<Printer className="text-purple-500" size={24} />}
+            label="总批次"
+            value={batches.length}
+            href="/teacher/batches"
+            color="purple"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 待复核列表 */}
+          <div className="lg:col-span-2 space-y-6">
+            <section className="bg-white rounded-lg border shadow-sm p-4">
+              <h2 className="font-semibold mb-3 flex items-center gap-2">
+                <AlertCircle size={18} className="text-orange-500" /> 待复核（可批改/批注/打印）
+              </h2>
+              {needsReview.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">暂无待复核试卷</div>
+              ) : (
+                <div className="space-y-2">
+                  {needsReview.slice(0, 10).map((s: any) => (
+                    <Link
+                      key={s.submission.id}
+                      href={`/teacher/submissions/${s.submission.id}/review`}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-orange-50 hover:border-orange-200 transition"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          #{s.orderIndex + 1} · {s.student?.name || s.detectedName || '未识别学生'}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">得分: {s.submission.totalScore ?? '批改中'}</div>
                       </div>
-                      {hw.description && <p className="text-sm text-muted-foreground mb-2">{hw.description}</p>}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                        <span>{hw.className}</span>
-                        <span>共{hw.questionCount}题 · 满分{hw.totalScore}分</span>
-                        {hw.averageScore != null && <span>平均{hw.averageScore}分</span>}
-                        {hw.deadline && <span>截止：{hw.deadline.slice(0, 10)}</span>}
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      {hw.status === 'pending' ? (
-                        <Link href={`/teacher/grade/${hw.id}`}
-                          className="inline-flex items-center gap-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
-                          开始批改 <ArrowRight size={16} />
-                        </Link>
-                      ) : (
-                        <Link href="/teacher/analytics"
-                          className="inline-flex items-center gap-1 px-4 py-2 bg-muted text-foreground rounded-lg text-sm font-medium hover:bg-muted/80 transition-colors">
-                          查看分析
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {homeworks.length === 0 && !loading && (
-                <div className="py-12 text-center text-muted-foreground">
-                  <FileText size={40} className="mx-auto mb-3 opacity-30" />
-                  <p>还没有作业，点击右上角上传第一份试卷吧！</p>
+                      <div className="text-sm text-blue-600">去复核 →</div>
+                    </Link>
+                  ))}
                 </div>
               )}
-            </div>
-          )}
-        </div>
+            </section>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-border p-6">
-            <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-              <AlertCircle size={20} className="text-accent-500" />班级薄弱点
-            </h2>
-            <div className="space-y-3">
-              {analytics.knowledgePointMastery
-                .slice()
-                .sort((a, b) => a.correctRate - b.correctRate)
-                .slice(0, 2)
-                .map(kp => (
-                  <div key={kp.id} className="p-3 rounded-xl bg-accent-50 border border-accent-100">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">{kp.name}</span>
-                      <span className="text-accent-600 font-bold">{kp.correctRate}%</span>
-                    </div>
-                    <div className="w-full h-2 bg-accent-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-accent-500 rounded-full" style={{ width: `${kp.correctRate}%` }} />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">错误率较高，建议重点讲解</p>
-                  </div>
-                ))}
-            </div>
-            <Link href="/teacher/analytics" className="mt-4 block text-center text-sm text-primary-600 hover:text-primary-700 py-2">
-              查看完整分析 →
-            </Link>
+            <section className="bg-white rounded-lg border shadow-sm p-4">
+              <h2 className="font-semibold mb-3 flex items-center gap-2">
+                <Clock size={18} className="text-blue-500" /> 最近批次
+              </h2>
+              {batches.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Plus size={32} className="mx-auto mb-2 opacity-30" />
+                  暂无批次，上传PDF开始批改
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {batches.slice(0, 5).map((b: any) => (
+                    <Link
+                      key={b.id}
+                      href={`/teacher/batches/${b.id}`}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                    >
+                      <div>
+                        <div className="font-medium text-sm">
+                          {b.class ? `${b.class.grade} ${b.class.name}` : b.sourceType === 'webdav' ? '扫描仪上传' : '手动上传'}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {new Date(b.createdAt).toLocaleString('zh-CN')} · {b._count?.sheets || 0}份
+                        </div>
+                      </div>
+                      <div className="text-sm">
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          b.status === 'ready' ? 'bg-green-100 text-green-700' :
+                          b.status === 'failed' ? 'bg-red-100 text-red-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
 
-          <div className="bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl p-6 text-white">
-            <h3 className="font-bold text-lg mb-2">💡 AI教学助手</h3>
-            <p className="text-primary-100 text-sm mb-4">上传学生试卷照片，AI自动识别姓名、答案并批改，生成针对性教学建议。</p>
-            <Link href="/teacher/assign" className="inline-flex items-center gap-1 px-4 py-2 bg-white/20 backdrop-blur rounded-lg text-sm font-medium hover:bg-white/30 transition-colors">
-              立即上传批改 <ArrowRight size={16} />
-            </Link>
+          {/* 打印队列 */}
+          <div>
+            <PrintQueue />
+
+            <div className="mt-4 bg-white rounded-lg border shadow-sm p-4">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <Zap size={16} className="text-orange-500" /> 快捷操作
+              </h3>
+              <div className="space-y-2">
+                <Link href="/teacher/analytics" className="block text-sm px-3 py-2 hover:bg-gray-50 rounded">📊 学情分析</Link>
+                <Link href="/teacher/assign" className="block text-sm px-3 py-2 hover:bg-gray-50 rounded">📝 旧版手动批改（兼容）</Link>
+              </div>
+            </div>
           </div>
         </div>
+      </main>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, href, color, processing }: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  href?: string;
+  color: string;
+  processing?: boolean;
+}) {
+  const bgColors: Record<string, string> = {
+    orange: 'hover:border-orange-300',
+    blue: 'hover:border-blue-300',
+    emerald: 'hover:border-emerald-300',
+    purple: 'hover:border-purple-300',
+  };
+  const content = (
+    <div className={`bg-white rounded-lg border shadow-sm p-4 transition ${href ? bgColors[color] : ''}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm text-gray-500">{label}</div>
+          <div className="text-3xl font-bold mt-1 flex items-center gap-2">
+            {value}
+            {processing && value > 0 && (
+              <span className="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
+            )}
+          </div>
+        </div>
+        {icon}
       </div>
     </div>
   );
+  if (href) return <Link href={href}>{content}</Link>;
+  return content;
 }
