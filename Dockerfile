@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# 安装系统依赖（canvas需要）
+# 安装系统依赖（canvas需要 + openssl3供prisma使用）
 RUN apk add --no-cache \
   build-base \
   cairo-dev \
@@ -11,7 +11,9 @@ RUN apk add --no-cache \
   jpeg-dev \
   giflib-dev \
   librsvg-dev \
-  python3
+  python3 \
+  openssl-dev \
+  ca-certificates
 
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -28,7 +30,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # 安装运行期依赖
-# 注意：alpine包名 font-noto-cjk（不是ttf-noto-cjk）
+# 注意：alpine包名 font-noto-cjk（不是ttf-noto-cjk）；openssl3供prisma运行时用
 RUN apk add --no-cache \
   dumb-init \
   cairo \
@@ -38,6 +40,8 @@ RUN apk add --no-cache \
   librsvg \
   font-noto-cjk \
   poppler-utils \
+  openssl \
+  ca-certificates \
   && addgroup -S nodejs && adduser -S nextjs -G nodejs
 
 # 复制构建产物

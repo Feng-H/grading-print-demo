@@ -53,13 +53,13 @@ export async function handleOcrJob(job: { refId: string }) {
   });
 
   // 如果batch没关联classId，取该老师的第一个班级兜底
-  let classId = sheet.batch.classId;
+  let classId: string | null = sheet.batch.classId;
   if (!classId) {
     const fallbackClass = await prisma.class.findFirst({
       where: { teacherId: sheet.batch.teacherId },
       orderBy: { createdAt: 'asc' },
     });
-    classId = fallbackClass?.id;
+    classId = fallbackClass?.id ?? null;
   }
 
   // 查找匹配的学生（按姓名/学号模糊匹配班级学生）
