@@ -28,6 +28,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # 安装运行期依赖
+# 注意：alpine包名 font-noto-cjk（不是ttf-noto-cjk）
 RUN apk add --no-cache \
   dumb-init \
   cairo \
@@ -35,7 +36,7 @@ RUN apk add --no-cache \
   jpeg \
   giflib \
   librsvg \
-  ttf-noto-cjk \
+  font-noto-cjk \
   poppler-utils \
   && addgroup -S nodejs && adduser -S nextjs -G nodejs
 
