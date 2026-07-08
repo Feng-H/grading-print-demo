@@ -22,6 +22,7 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({})) as any;
     const filePath = body.path || body.filename || body.file;
+    const fileSize = body.size || 0;
     if (!filePath) {
       return NextResponse.json({ error: '缺少path参数' }, { status: 400 });
     }
@@ -30,6 +31,12 @@ export async function POST(req: Request) {
     const seen = await prisma.webdavSeen.findUnique({ where: { path: filePath } });
     if (seen) {
       return NextResponse.json({ ok: true, skipped: 'already processed' });
+    }
+
+    // 跳过0字节文件（可能还在上传中）
+    if (fileSize === 0) {
+      console.log(`[webdav webhook] 跳过0字节文件: ${filePath}（可能还在上传中）`);
+      return NextResponse.json({ ok: true, skipped: 'zero-byte file' });
     }
 
     // 下载PDF

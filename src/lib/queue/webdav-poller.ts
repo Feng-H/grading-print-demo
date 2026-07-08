@@ -22,6 +22,12 @@ export async function pollWebdav() {
       const seen = await prisma.webdavSeen.findUnique({ where: { path: f.filename } });
       if (seen) continue;
 
+      // 跳过0字节文件（可能还在上传中）
+      if (f.size === 0) {
+        console.log(`[webdav] 跳过0字节文件: ${f.filename}（可能还在上传中）`);
+        continue;
+      }
+
       console.log(`[webdav] 发现新文件: ${f.filename} (${f.size} bytes)`);
       try {
         const pdfBuffer = await downloadFile(f.filename);

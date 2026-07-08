@@ -4,6 +4,18 @@
  */
 import { saveBuffer } from '../storage/local';
 
+// Polyfill DOMMatrix and Path2D for pdfjs-dist
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { DOMMatrix } = require('canvas');
+  (globalThis as any).DOMMatrix = DOMMatrix;
+}
+if (typeof globalThis.Path2D === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Path2D } = require('canvas');
+  (globalThis as any).Path2D = Path2D;
+}
+
 export interface RenderedPage {
   pageIndex: number;
   width: number;
