@@ -45,7 +45,7 @@ export async function rasterizePdf(
 
   const loadingTask = (pdfjs as any).getDocument({
     data: new Uint8Array(pdfBuffer),
-    disableWorker: true,
+    useWorkerFetch: false,
     isEvalSupported: false,
     useSystemFonts: true,
   });
@@ -84,17 +84,9 @@ export async function rasterizePdf(
 }
 
 export async function getPdfPageCount(pdfBuffer: Buffer): Promise<number> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const loadingTask = (pdfjs as any).getDocument({
-    data: new Uint8Array(pdfBuffer),
-    disableWorker: true,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  });
-  const pdfDoc = await loadingTask.promise;
-  const n = pdfDoc.numPages;
-  try { pdfDoc.destroy?.(); } catch {}
-  return n;
+  const { PDFDocument } = await import('pdf-lib');
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  return pdfDoc.getPageCount();
 }
 
 /**
