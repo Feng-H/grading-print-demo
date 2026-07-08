@@ -14,4 +14,8 @@ fi
 chown -R www-data:www-data /var/www/html
 chmod -R 755 /var/www/html
 
+# 确保锁数据库目录可写
+mkdir -p /var/www/html/.davlock
+chown www-data:www-data /var/www/html/.davlock
+
 exec "$@"

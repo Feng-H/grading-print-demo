@@ -36,6 +36,10 @@ export async function rasterizePdf(
 
   // 动态import避免构建时问题
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  // Set dummy worker source
+  try {
+    (pdfjs as any).GlobalWorkerOptions.workerSrc = 'dummy';
+  } catch {}
   let Canvas: any;
   try {
     Canvas = await import('canvas');
@@ -45,9 +49,12 @@ export async function rasterizePdf(
 
   const loadingTask = (pdfjs as any).getDocument({
     data: new Uint8Array(pdfBuffer),
-    useWorkerFetch: false,
+    disableWorker: true,
     isEvalSupported: false,
     useSystemFonts: true,
+    standardFontDataUrl: 'dummy',
+    cMapUrl: 'dummy',
+    cMapPacked: false,
   });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
