@@ -34,6 +34,23 @@ services:
       timeout: 5s
       retries: 5
 
+  webdav:
+    image: httpd:2.4-alpine
+    container_name: swp-webdav
+    restart: unless-stopped
+    ports:
+      - "${WEBDAV_PORT:-8081}:80"
+    environment:
+      - WEBDAV_USER=${WEBDAV_USER:-scanner}
+      - WEBDAV_PASS=${WEBDAV_PASS:-changeme}
+    volumes:
+      - webdav-data:/var/www/html
+      - ./webdav/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
+      - ./webdav/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/entrypoint.sh"]
+    command: ["httpd-foreground"]
+
 volumes:
   swp-storage:
   swp-postgres:
+  webdav-data:
