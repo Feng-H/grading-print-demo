@@ -6,7 +6,8 @@ echo "[entrypoint] 等待数据库..."
 sleep 2
 
 echo "[entrypoint] 运行数据库迁移..."
-npx prisma migrate deploy || npx prisma db push --accept-data-loss
+# 使用 npx 并锁定 Prisma 5.22.0 版本
+npx prisma@5.22.0 db push
 
 echo "[entrypoint] 启动应用..."
 exec "$@"
