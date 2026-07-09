@@ -62,6 +62,7 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/canvas ./node_modules/canvas
 COPY --from=builder /app/node_modules/sharp ./node_modules/sharp
 COPY --from=builder /app/node_modules/ipp ./node_modules/ipp
+COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
 
 # 准备存储目录
 RUN mkdir -p /data/storage && chown -R nextjs:nodejs /data/storage
