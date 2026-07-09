@@ -4,7 +4,7 @@
  */
 import { saveBuffer } from '../storage/local';
 
-// Polyfill DOMMatrix and Path2D for pdfjs-dist
+// Polyfill DOMMatrix, Path2D, Image for pdfjs-dist + node-canvas
 if (typeof globalThis.DOMMatrix === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { DOMMatrix } = require('canvas');
@@ -14,6 +14,11 @@ if (typeof globalThis.Path2D === 'undefined') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Path2D } = require('canvas');
   (globalThis as any).Path2D = Path2D;
+}
+if (typeof globalThis.Image === 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Image } = require('canvas');
+  (globalThis as any).Image = Image;
 }
 
 export interface RenderedPage {
@@ -35,7 +40,7 @@ export async function rasterizePdf(
   const quality = options.quality ?? 0.85;
 
   // 动态import避免构建时问题
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
   let Canvas: any;
   try {
     Canvas = await import('canvas');

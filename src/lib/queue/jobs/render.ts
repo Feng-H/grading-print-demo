@@ -90,11 +90,17 @@ export async function handleRenderJob(job: { refId: string }) {
     },
   });
 
-  // 标记submission为待复核
+  // 标记submission和sheet为待复核
   await prisma.submission.update({
     where: { id: submission.id },
     data: { status: 'needs_review' },
   });
+  if (submission.sheet) {
+    await prisma.paperSheet.update({
+      where: { id: submission.sheet.id },
+      data: { status: 'needs_review' },
+    });
+  }
 
   // 检查是否整个batch所有sheet都完成了
   const totalSheets = await prisma.paperSheet.count({ where: { batchId } });
